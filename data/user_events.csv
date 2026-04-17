@@ -1,0 +1,20 @@
+user_id,account_id,event_name,timestamp,page,rage_click,session_id
+U001,A001,login,2025-04-01 10:00,login_page,0,S001
+U001,A001,upload_invoice,2025-04-01 10:05,invoice_page,0,S001
+U001,A001,configure_workflow,2025-04-01 10:10,workflow_page,0,S001
+U002,A002,login,2025-04-02 11:00,login_page,0,S002
+U002,A002,upload_invoice,2025-04-02 11:05,invoice_page,1,S002
+U002,A002,upload_invoice,2025-04-02 11:06,invoice_page,1,S002
+U002,A002,logout,2025-04-02 11:10,invoice_page,0,S002
+U003,A003,login,2025-04-03 09:30,login_page,0,S003
+U003,A003,upload_invoice,2025-04-03 09:40,invoice_page,0,S003
+U003,A003,configure_workflow,2025-04-03 09:50,workflow_page,0,S003
+U004,A004,login,2025-04-04 14:00,login_page,0,S004
+U004,A004,upload_invoice,2025-04-04 14:05,invoice_page,1,S004
+U004,A004,logout,2025-04-04 14:10,invoice_page,0,S004
+U005,A005,login,2025-04-05 15:00,login_page,0,S005
+U005,A005,upload_invoice,2025-04-05 15:05,invoice_page,0,S005
+U005,A005,configure_workflow,2025-04-05 15:15,workflow_page,0,S005
+U006,A006,login,2025-04-06 16:00,login_page,0,S006
+U006,A006,upload_invoice,2025-04-06 16:05,invoice_page,1,S006
+U006,A006,logout,2025-04-06 16:08,invoice_page,0,S006
