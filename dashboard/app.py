@@ -1,7 +1,11 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Churn Analytics Dashboard", layout="wide")
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+
+st.set_page_config(page_title="AI Churn Dashboard", layout="wide")
 
 # -----------------------------
 # Load Data
@@ -16,118 +20,152 @@ def load_data():
 
 accounts, events, feature, tickets = load_data()
 
-# -----------------------------
-# Title
-# -----------------------------
-st.title("📉 Customer Churn Analytics Dashboard")
-st.markdown("Simulating product analytics insights (Pendo-style)")
+st.title("🤖 AI-Powered Churn Intelligence Dashboard")
 
 # -----------------------------
-# KPI Section
+# Filters
 # -----------------------------
-total_accounts = len(accounts)
-churned_accounts = accounts[accounts["churned"] == 1].shape[0]
-churn_rate = (churned_accounts / total_accounts) * 100
+st.sidebar.header("🔍 Filters")
+
+plan_filter = st.sidebar.multiselect("Select Plan", accounts["plan"].unique(), default=accounts["plan"].unique())
+region_filter = st.sidebar.multiselect("Select Region", accounts["region"].unique(), default=accounts["region"].unique())
+industry_filter = st.sidebar.multiselect("Select Industry", accounts["industry"].unique(), default=accounts["industry"].unique())
+
+filtered_accounts = accounts[
+    (accounts["plan"].isin(plan_filter)) &
+    (accounts["region"].isin(region_filter)) &
+    (accounts["industry"].isin(industry_filter))
+]
+
+# -----------------------------
+# Merge Data
+# -----------------------------
+merged = filtered_accounts.merge(feature, on="account_id", how="left")
+
+rage = events.groupby("account_id")["rage_click"].sum().reset_index()
+merged = merged.merge(rage, on="account_id", how="left")
+
+ticket_counts = tickets.groupby("account_id").size().reset_index(name="tickets")
+merged = merged.merge(ticket_counts, on="account_id", how="left")
+
+merged = merged.fillna(0)
+
+# -----------------------------
+# KPIs
+# -----------------------------
+total_accounts = len(merged)
+churned_accounts = merged[merged["churned"] == 1].shape[0]
+churn_rate = (churned_accounts / total_accounts) * 100 if total_accounts > 0 else 0
 
 col1, col2, col3 = st.columns(3)
-col1.metric("Total Accounts", total_accounts)
-col2.metric("Churned Accounts", churned_accounts)
-col3.metric("Churn Rate (%)", f"{churn_rate:.2f}")
+col1.metric("Accounts", total_accounts)
+col2.metric("Churn Rate", f"{churn_rate:.1f}%")
+col3.metric("Churned", churned_accounts)
 
 st.divider()
 
 # -----------------------------
-# Feature Usage vs Churn
+# ML Model
 # -----------------------------
-st.subheader("📊 Feature Usage vs Churn")
+st.subheader("🤖 Churn Prediction")
 
-merged = pd.merge(accounts, feature, on="account_id")
+X = merged[["usage_count", "rage_click", "tickets"]]
+y = merged["churned"]
 
-usage_by_churn = merged.groupby("churned")["usage_count"].mean()
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
 
-st.bar_chart(usage_by_churn)
+model = LogisticRegression()
+model.fit(X_scaled, y)
 
-st.caption("Insight: Lower feature usage correlates with churn")
+merged["churn_probability"] = model.predict_proba(X_scaled)[:, 1]
 
-# -----------------------------
-# Rage Click Analysis
-# -----------------------------
-st.subheader("⚠️ Rage Click Analysis")
+# Risk label
+def risk_label(p):
+    if p > 0.7:
+        return "High Risk"
+    elif p > 0.4:
+        return "Medium Risk"
+    else:
+        return "Low Risk"
 
-rage_clicks = events.groupby("account_id")["rage_click"].sum().reset_index()
-rage_merged = pd.merge(accounts, rage_clicks, on="account_id")
-
-rage_by_churn = rage_merged.groupby("churned")["rage_click"].mean()
-
-st.bar_chart(rage_by_churn)
-
-st.caption("Insight: Higher rage clicks indicate UX friction")
-
-# -----------------------------
-# Funnel Analysis
-# -----------------------------
-st.subheader("📉 Funnel Drop-off Analysis")
-
-funnel_steps = ["login", "upload_invoice", "configure_workflow"]
-
-funnel_counts = []
-for step in funnel_steps:
-    count = events[events["event_name"] == step]["account_id"].nunique()
-    funnel_counts.append(count)
-
-funnel_df = pd.DataFrame({
-    "Step": funnel_steps,
-    "Users": funnel_counts
-})
-
-st.bar_chart(funnel_df.set_index("Step"))
-
-st.caption("Insight: Major drop between upload_invoice → configure_workflow")
+merged["risk_segment"] = merged["churn_probability"].apply(risk_label)
 
 # -----------------------------
-# Support Tickets Analysis
+# Doughnut Chart
 # -----------------------------
-st.subheader("🎫 Support Ticket Trends")
-
-ticket_counts = tickets.groupby("account_id").size().reset_index(name="tickets")
-
-ticket_merged = pd.merge(accounts, ticket_counts, on="account_id", how="left")
-ticket_merged["tickets"] = ticket_merged["tickets"].fillna(0)
-
-tickets_by_churn = ticket_merged.groupby("churned")["tickets"].mean()
-
-st.bar_chart(tickets_by_churn)
-
-st.caption("Insight: Churned users raise more support tickets")
+def donut_chart(value, label):
+    fig, ax = plt.subplots()
+    ax.pie([value, 100 - value], labels=[label, ""], autopct='%1.1f%%')
+    centre_circle = plt.Circle((0, 0), 0.70, fc='white')
+    fig.gca().add_artist(centre_circle)
+    return fig
 
 # -----------------------------
-# Churned Accounts Table
+# Behavioral Charts
 # -----------------------------
-st.subheader("📋 At-Risk / Churned Accounts")
+st.subheader("📊 Behavioral Insights")
 
-churned_df = accounts[accounts["churned"] == 1]
-st.dataframe(churned_df)
+col1, col2, col3 = st.columns(3)
+
+low_usage = merged[merged["usage_count"] < 5].shape[0] / total_accounts * 100 if total_accounts > 0 else 0
+col1.pyplot(donut_chart(low_usage, "Low Adoption"))
+
+high_rage = merged[merged["rage_click"] > 0].shape[0] / total_accounts * 100 if total_accounts > 0 else 0
+col2.pyplot(donut_chart(high_rage, "High Rage"))
+
+drop_off = 40
+col3.pyplot(donut_chart(drop_off, "Drop-off"))
+
+st.divider()
 
 # -----------------------------
-# Key Insights Section
+# AI Insights
 # -----------------------------
-st.subheader("🧠 Key Insights")
+st.subheader("🤖 AI Insights")
 
-st.markdown("""
-- 🔴 Low feature adoption strongly correlates with churn  
-- ⚠️ Rage clicks highlight UX issues in invoice upload  
-- 📉 Major drop-off in onboarding funnel  
-- 🎫 High support dependency among churned users  
-""")
+if low_usage > 40:
+    st.warning("Low feature adoption is driving churn")
+
+if high_rage > 30:
+    st.warning("Rage clicks indicate UX issues in invoice upload")
+
+if churn_rate > 10:
+    st.error("Churn rate is above acceptable threshold")
+
+# -----------------------------
+# Risk Distribution
+# -----------------------------
+st.subheader("⚠️ Risk Segmentation")
+
+risk_counts = merged["risk_segment"].value_counts()
+st.bar_chart(risk_counts)
+
+# -----------------------------
+# Top Risk Accounts
+# -----------------------------
+st.subheader("🔴 Top At-Risk Accounts")
+
+top_risk = merged.sort_values(by="churn_probability", ascending=False).head(5)
+
+st.dataframe(top_risk[[
+    "account_id",
+    "plan",
+    "usage_count",
+    "rage_click",
+    "tickets",
+    "churn_probability",
+    "risk_segment"
+]])
 
 # -----------------------------
 # Recommendations
 # -----------------------------
-st.subheader("🚀 Recommendations")
+st.subheader("🚀 Recommended Actions")
 
 st.markdown("""
-1. Improve onboarding with guided walkthroughs  
-2. Fix invoice upload UX issues  
-3. Introduce feature adoption nudges  
-4. Implement churn prediction & alerts  
+- Target high-risk accounts with proactive outreach  
+- Improve onboarding for low-usage users  
+- Fix UX issues in invoice upload flow  
+- Trigger alerts based on churn probability  
 """)
