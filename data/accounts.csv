@@ -1,0 +1,11 @@
+account_id,plan,signup_date,industry,region,churned,churn_date
+A001,Pro,2025-01-10,FinTech,UK,0,
+A002,Basic,2025-02-15,Ecommerce,India,1,2025-05-20
+A003,Enterprise,2025-01-22,Healthcare,UAE,0,
+A004,Basic,2025-03-05,FinTech,India,1,2025-06-01
+A005,Pro,2025-02-01,Ecommerce,UK,0,
+A006,Basic,2025-03-18,Logistics,India,1,2025-06-10
+A007,Enterprise,2025-01-30,Healthcare,UAE,0,
+A008,Pro,2025-02-25,Ecommerce,India,1,2025-06-15
+A009,Pro,2025-01-12,FinTech,UK,0,
+A010,Basic,2025-03-01,Logistics,India,1,2025-06-20
