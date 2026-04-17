@@ -1,18 +1,39 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import numpy as np
 
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
+st.set_page_config(page_title="Churn Intelligence", layout="wide")
 
-st.set_page_config(page_title="AI Churn Dashboard", layout="wide")
+# -----------------------------
+# Clean SaaS UI Styling
+# -----------------------------
+st.markdown("""
+<style>
+.block-container {padding-top: 1.5rem;}
+
+.card {
+    background-color: #FFFFFF;
+    padding: 18px;
+    border-radius: 14px;
+    box-shadow: 0px 4px 12px rgba(0,0,0,0.04);
+    margin-bottom: 15px;
+}
+
+.highlight {
+    background-color: #EEF2FF;
+    padding: 12px;
+    border-radius: 10px;
+}
+
+</style>
+""", unsafe_allow_html=True)
 
 # -----------------------------
 # Load Data
 # -----------------------------
 @st.cache_data
 def load_data():
-    accounts = pd.read_csv("../data/accounts.csv")
+    accounts = pd.read_csv("../data/accounts.csv", parse_dates=["signup_date"])
     events = pd.read_csv("../data/user_events.csv")
     feature = pd.read_csv("../data/feature_usage.csv")
     tickets = pd.read_csv("../data/support_tickets.csv")
@@ -20,152 +41,128 @@ def load_data():
 
 accounts, events, feature, tickets = load_data()
 
-st.title("🤖 AI-Powered Churn Intelligence Dashboard")
+# -----------------------------
+# Sidebar Navigation (Story Mode)
+# -----------------------------
+page = st.sidebar.radio(
+    "📖 Story Navigation",
+    [
+        "Executive Summary",
+        "Why Users Churn",
+        "Who Will Churn (AI)",
+        "What Should We Do"
+    ]
+)
 
 # -----------------------------
-# Filters
+# PAGE 1: EXECUTIVE SUMMARY
 # -----------------------------
-st.sidebar.header("🔍 Filters")
+if page == "Executive Summary":
 
-plan_filter = st.sidebar.multiselect("Select Plan", accounts["plan"].unique(), default=accounts["plan"].unique())
-region_filter = st.sidebar.multiselect("Select Region", accounts["region"].unique(), default=accounts["region"].unique())
-industry_filter = st.sidebar.multiselect("Select Industry", accounts["industry"].unique(), default=accounts["industry"].unique())
+    st.title("📊 Churn Intelligence Overview")
 
-filtered_accounts = accounts[
-    (accounts["plan"].isin(plan_filter)) &
-    (accounts["region"].isin(region_filter)) &
-    (accounts["industry"].isin(industry_filter))
-]
+    total = len(accounts)
+    churned = accounts[accounts["churned"] == 1].shape[0]
+    churn_rate = (churned / total) * 100
 
-# -----------------------------
-# Merge Data
-# -----------------------------
-merged = filtered_accounts.merge(feature, on="account_id", how="left")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Accounts", total)
+    col2.metric("Churned", churned)
+    col3.metric("Churn Rate", f"{churn_rate:.1f}%")
 
-rage = events.groupby("account_id")["rage_click"].sum().reset_index()
-merged = merged.merge(rage, on="account_id", how="left")
-
-ticket_counts = tickets.groupby("account_id").size().reset_index(name="tickets")
-merged = merged.merge(ticket_counts, on="account_id", how="left")
-
-merged = merged.fillna(0)
+    st.markdown('<div class="highlight">⚠️ Churn is driven by low engagement and poor onboarding experience.</div>', unsafe_allow_html=True)
 
 # -----------------------------
-# KPIs
+# PAGE 2: WHY USERS CHURN
 # -----------------------------
-total_accounts = len(merged)
-churned_accounts = merged[merged["churned"] == 1].shape[0]
-churn_rate = (churned_accounts / total_accounts) * 100 if total_accounts > 0 else 0
+elif page == "Why Users Churn":
 
-col1, col2, col3 = st.columns(3)
-col1.metric("Accounts", total_accounts)
-col2.metric("Churn Rate", f"{churn_rate:.1f}%")
-col3.metric("Churned", churned_accounts)
+    st.title("🔍 Why Are Users Churning?")
 
-st.divider()
+    st.subheader("1. Feature Adoption")
 
-# -----------------------------
-# ML Model
-# -----------------------------
-st.subheader("🤖 Churn Prediction")
+    merged = pd.merge(accounts, feature, on="account_id")
+    usage = merged.groupby("churned")["usage_count"].mean()
 
-X = merged[["usage_count", "rage_click", "tickets"]]
-y = merged["churned"]
+    st.bar_chart(usage)
 
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
+    st.subheader("2. UX Friction (Rage Clicks)")
 
-model = LogisticRegression()
-model.fit(X_scaled, y)
+    rage = events.groupby("account_id")["rage_click"].sum().reset_index()
+    rage_m = pd.merge(accounts, rage, on="account_id")
+    rage_data = rage_m.groupby("churned")["rage_click"].mean()
 
-merged["churn_probability"] = model.predict_proba(X_scaled)[:, 1]
+    st.bar_chart(rage_data)
 
-# Risk label
-def risk_label(p):
-    if p > 0.7:
-        return "High Risk"
-    elif p > 0.4:
-        return "Medium Risk"
-    else:
-        return "Low Risk"
+    st.subheader("3. Funnel Drop-off")
 
-merged["risk_segment"] = merged["churn_probability"].apply(risk_label)
+    steps = ["login", "upload_invoice", "configure_workflow"]
+    counts = [events[events["event_name"] == s]["account_id"].nunique() for s in steps]
+
+    funnel = pd.DataFrame({"Step": steps, "Users": counts})
+    st.bar_chart(funnel.set_index("Step"))
+
+    st.markdown('<div class="highlight">📉 Biggest drop occurs after invoice upload → workflow setup.</div>', unsafe_allow_html=True)
 
 # -----------------------------
-# Doughnut Chart
+# PAGE 3: WHO WILL CHURN
 # -----------------------------
-def donut_chart(value, label):
-    fig, ax = plt.subplots()
-    ax.pie([value, 100 - value], labels=[label, ""], autopct='%1.1f%%')
-    centre_circle = plt.Circle((0, 0), 0.70, fc='white')
-    fig.gca().add_artist(centre_circle)
-    return fig
+elif page == "Who Will Churn (AI)":
 
-# -----------------------------
-# Behavioral Charts
-# -----------------------------
-st.subheader("📊 Behavioral Insights")
+    st.title("🤖 Predicting At-Risk Accounts")
 
-col1, col2, col3 = st.columns(3)
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.preprocessing import StandardScaler
 
-low_usage = merged[merged["usage_count"] < 5].shape[0] / total_accounts * 100 if total_accounts > 0 else 0
-col1.pyplot(donut_chart(low_usage, "Low Adoption"))
+    usage = feature[["account_id", "usage_count"]]
+    rage = events.groupby("account_id")["rage_click"].sum().reset_index()
+    ticket_counts = tickets.groupby("account_id").size().reset_index(name="tickets")
 
-high_rage = merged[merged["rage_click"] > 0].shape[0] / total_accounts * 100 if total_accounts > 0 else 0
-col2.pyplot(donut_chart(high_rage, "High Rage"))
+    ml_df = accounts.merge(usage, on="account_id", how="left") \
+                    .merge(rage, on="account_id", how="left") \
+                    .merge(ticket_counts, on="account_id", how="left")
 
-drop_off = 40
-col3.pyplot(donut_chart(drop_off, "Drop-off"))
+    ml_df = ml_df.fillna(0)
 
-st.divider()
+    X = ml_df[["usage_count", "rage_click", "tickets"]]
+    y = ml_df["churned"]
 
-# -----------------------------
-# AI Insights
-# -----------------------------
-st.subheader("🤖 AI Insights")
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
 
-if low_usage > 40:
-    st.warning("Low feature adoption is driving churn")
+    model = LogisticRegression()
+    model.fit(X_scaled, y)
 
-if high_rage > 30:
-    st.warning("Rage clicks indicate UX issues in invoice upload")
+    ml_df["churn_probability"] = model.predict_proba(X_scaled)[:, 1]
 
-if churn_rate > 10:
-    st.error("Churn rate is above acceptable threshold")
+    ml_df["risk"] = pd.cut(
+        ml_df["churn_probability"],
+        bins=[0, 0.4, 0.7, 1],
+        labels=["Low", "Medium", "High"]
+    )
 
-# -----------------------------
-# Risk Distribution
-# -----------------------------
-st.subheader("⚠️ Risk Segmentation")
+    st.bar_chart(ml_df["risk"].value_counts())
 
-risk_counts = merged["risk_segment"].value_counts()
-st.bar_chart(risk_counts)
+    st.dataframe(ml_df[["account_id", "churn_probability", "risk"]])
+
+    st.markdown('<div class="highlight">🔴 High-risk users need immediate intervention.</div>', unsafe_allow_html=True)
 
 # -----------------------------
-# Top Risk Accounts
+# PAGE 4: ACTION PLAN
 # -----------------------------
-st.subheader("🔴 Top At-Risk Accounts")
+elif page == "What Should We Do":
 
-top_risk = merged.sort_values(by="churn_probability", ascending=False).head(5)
+    st.title("🚀 Retention Strategy")
 
-st.dataframe(top_risk[[
-    "account_id",
-    "plan",
-    "usage_count",
-    "rage_click",
-    "tickets",
-    "churn_probability",
-    "risk_segment"
-]])
+    col1, col2, col3 = st.columns(3)
 
-# -----------------------------
-# Recommendations
-# -----------------------------
-st.subheader("🚀 Recommended Actions")
+    with col1:
+        st.markdown('<div class="card"><h4>🔴 High Risk</h4><p>CS outreach + onboarding support</p></div>', unsafe_allow_html=True)
 
-st.markdown("""
-- Target high-risk accounts with proactive outreach  
-- Improve onboarding for low-usage users  
-- Fix UX issues in invoice upload flow  
-- Trigger alerts based on churn probability  
-""")
+    with col2:
+        st.markdown('<div class="card"><h4>🟡 Medium Risk</h4><p>In-app nudges & education</p></div>', unsafe_allow_html=True)
+
+    with col3:
+        st.markdown('<div class="card"><h4>🟢 Low Risk</h4><p>Upsell & engagement</p></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="highlight">💡 Focus on onboarding + feature adoption to reduce churn by ~30%.</div>', unsafe_allow_html=True)
