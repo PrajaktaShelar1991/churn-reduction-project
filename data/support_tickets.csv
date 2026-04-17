@@ -1,0 +1,9 @@
+account_id,ticket_type,severity,created_at
+A002,Invoice Upload Error,High,2025-04-02
+A004,Workflow Issue,Medium,2025-04-04
+A006,Invoice Upload Error,High,2025-04-06
+A008,Slow Performance,Medium,2025-04-07
+A010,Invoice Upload Error,High,2025-04-08
+A001,General Query,Low,2025-04-03
+A003,Integration Issue,Medium,2025-04-05
+A005,General Query,Low,2025-04-06
